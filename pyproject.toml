@@ -14,6 +14,10 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
 ]
+dependencies = [
+  "astropy",
+  "numpy",
+]
 
 [project.urls]
 Homepage = "https://github.com/GregoryAshton/starfinder"
