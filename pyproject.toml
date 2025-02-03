@@ -7,7 +7,7 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "starfinder"
+name = "star_finder"
 authors = [{name = "Glen Cowan"}]
 dynamic = ["version", "description"]
 classifiers = [
