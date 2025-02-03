@@ -1,17 +1,42 @@
-# Welcome to MkDocs
+# Welcome
 
-For full documentation visit [mkdocs.org](https://www.mkdocs.org).
+Welcome to the documentation for starfinder
 
-## Commands
+## Installation
 
-* `mkdocs new [dir-name]` - Create a new project.
-* `mkdocs serve` - Start the live-reloading docs server.
-* `mkdocs build` - Build the documentation site.
-* `mkdocs -h` - Print help message and exit.
+To install `starfinder` directly, you will need to have a terminal with `git` and a working `python` environment. With these in hand follow the instructions below (note the command pre-pended with a `#` are comments while those pre-pended by `$` are to be run in the terminal):
+```
+# Clone the github repository
+$ git clone https://github.com/GregoryAshton/starfinder.git
+
+# Enter the directory
+$ cd starfinder
+
+# Install the requirements
+$ pip install -r requirements.txt
+
+# Install starfinder, the -e installs it in "editable" mode
+$ pip install -e .
+```
+
+To install `starfinder` from `pip`, simply run
+```
+$ pip install starfinder
+```
+WARNING: This is not yet implemented yet
 
 ## Project layout
 
-    mkdocs.yml    # The configuration file.
-    docs/
-        index.md  # The documentation homepage.
-        ...       # Other markdown pages, images and other files.
+    # The main package can be found in:
+    src/starfinder/
+        __init__.py
+        cluster.py
+        logger.py
+        starfield.py
+
+    pyproject.toml   # Configuration file for the packaging
+    setup.cfg        # Configuration file for installation
+    requirements.txt # Installation requirements
+    README.md        # README for the repository
+    mkdocs.yml       # The configuration file.
+    docs/            # Documentation
