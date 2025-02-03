@@ -1,7 +1,8 @@
 [build-system]
 requires = [
     "setuptools>=42",
-    "wheel"
+    "wheel",
+    "setuptools_scm>=8"
 ]
 build-backend = "setuptools.build_meta"
 
@@ -9,3 +10,14 @@ build-backend = "setuptools.build_meta"
 name = "starfinder"
 authors = [{name = "Glen Cowan"}]
 dynamic = ["version", "description"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/GregoryAshton/starfinder"
+Issues = "https://github.com/GregoryAshton/starfinder/issues"
+
+[tool.setuptools_scm]
+version_file = "src/starfinder/_version.py"
