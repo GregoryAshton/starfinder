@@ -3,7 +3,9 @@ site_name: starfinder
 nav:
   - 'index.md'
   - 'installation.md'
-  - Getting started: notebooks/Getting_started.ipynb
+  - Getting started: notebooks/getting_started.ipynb
+  - Estimating the background: notebooks/background.ipynb
+  - Clustering: notebooks/clustering.ipynb
 
 plugins:
   - mkdocs-autoapi
