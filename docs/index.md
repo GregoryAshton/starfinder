@@ -1,29 +1,6 @@
 # Welcome
 
-Welcome to the documentation for starfinder
-
-## Installation
-
-To install `starfinder` directly, you will need to have a terminal with `git` and a working `python` environment. With these in hand follow the instructions below (note the command pre-pended with a `#` are comments while those pre-pended by `$` are to be run in the terminal):
-```
-# Clone the github repository
-$ git clone https://github.com/GregoryAshton/starfinder.git
-
-# Enter the directory
-$ cd starfinder
-
-# Install the requirements
-$ pip install -r requirements.txt
-
-# Install starfinder, the -e installs it in "editable" mode
-$ pip install -e .
-```
-
-To install `starfinder` from `pip`, simply run
-```
-$ pip install starfinder
-```
-WARNING: This is not yet implemented yet
+Welcome to the documentation for starfinder. This is a simple package to help enable astronomy projects in the Department of Physics at Royal Holloway, University of London.
 
 ## Project layout
 
@@ -39,4 +16,4 @@ WARNING: This is not yet implemented yet
     requirements.txt # Installation requirements
     README.md        # README for the repository
     mkdocs.yml       # The configuration file.
-    docs/            # Documentation
+    docs/            # Documentation including notebooks
