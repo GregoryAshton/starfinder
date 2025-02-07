@@ -11,7 +11,7 @@ build:
     python: "3.13"
   jobs:
     pre_install:
-      - pip install mkdocs-material mkdocs-autoapi[python]
+      - pip install mkdocs-material mkdocs-autoapi[python] mkdocs-jupyter
 
 version: 2
 mkdocs:
