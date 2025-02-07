@@ -2,7 +2,7 @@ site_name: starfinder
 
 nav:
   - 'index.md'
-  - Getting started: ../examples/Getting_started.ipynb
+  - Getting started: examples/Getting_started.ipynb
 
 plugins:
   - mkdocs-autoapi
