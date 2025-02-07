@@ -22,14 +22,15 @@ logger = logging.getLogger("starfinder")
 class StarField(object):
     """Class to contain image data and lists of clusters and stars"""
 
-    def __init__(self, fits_file, astronometry_api_key):
+    def __init__(self, fits_file):
         self.fits_file = fits_file
         self.fits_file_basename = os.path.basename(self.fits_file)
         self.fits_file_dirname = os.path.dirname(self.fits_file)
-        self.astronometry_api_key = astronometry_api_key
 
         self.read_file()
-        self.get_coordinates_of_image_centre()
+
+    def has_wcs_header(self):
+        return "WCSAXES" in self.header
 
     def read_file(self):
         """Read the fits_file, store the contents, and initialise data"""
@@ -56,7 +57,15 @@ class StarField(object):
         self.cluster_list = []
         self.star_list = []
 
-    def get_coordinates_of_image_centre(self):
+    def threshold_hot_pixels(self, data, quantile=0.999):
+        data = data.copy()
+        maxval = np.quantile(data, quantile)
+        data[data > maxval] = maxval
+        return data
+
+    def setup_sky_coordinates(self, astronometry_api_key=None):
+        self.astronometry_api_key = astronometry_api_key
+
         warnings.simplefilter("ignore")  # suppress FITSFixedWarning
         if "GEO_LAT" in self.header and "GEO_LONG" in self.header:
             self.lat = self.header["GEO_LAT"]
@@ -69,10 +78,10 @@ class StarField(object):
         self.observation_date_str = self.header["DATE-OBS"]
         observation_date = Time(self.observation_date_str, format="isot", scale="utc")
 
-        if "WCSAXES" in self.header:
+        if self.has_wcs_header():
             logger.info("Using WCS information from the fits file header")
             wcs_header = self.header
-        else:
+        elif astronometry_api_key is not None:
             try:
                 logger.info("Attempting to extract  WCS information from astrometry.net")
                 from astroquery.astrometry_net import AstrometryNet
@@ -89,6 +98,9 @@ class StarField(object):
             except Exception as e:
                 logger.info(f"Failed to obtain data from astronometry.net due to {e}")
                 wcs_header = {}
+        else:
+            logger.warning("Unable to obtain WCS information: please provide astronometry_api_key")
+            wcs_header = None
 
         if wcs_header:
             # Calculate the ra and dec
@@ -120,6 +132,85 @@ class StarField(object):
             print(f"Azimuth: {self.az} degrees")
 
         warnings.resetwarnings()
+
+    def get_sky_projection(self):
+        return WCS(self.header)
+
+    def setup_sky_ax(self, ax):
+        ax.coords.grid(color='white', alpha=0.2, linestyle='dashed', linewidth=0.5)
+        lon = ax.coords[0]
+        lat = ax.coords[1]
+
+        lon.set_major_formatter('hh:mm:ss')
+        lon.set_ticks(spacing=1. * units.arcmin)
+        lon.set_ticklabel(exclude_overlapping=True)
+        lon.set_axislabel("RA")
+
+        lat.set_major_formatter('dd:mm')
+        lat.set_ticks(spacing=1. * units.arcmin)
+        lat.set_ticklabel(exclude_overlapping=True)
+        lat.set_axislabel("DEC")
+        return lat, lon
+
+    def set_usable_region(self, left=50, right=50, top=50, bottom=50, corner_radius=300):
+        """Define a region in which to accept stars using a boolean array
+
+        This will create a 2D boolean array which omits a border and rounded corners
+
+        """
+
+        bL, bR, bT, bB = left, right, top, bottom
+        numRows, numCols = self.n_ij.shape
+        rows, cols = np.ogrid[:numRows, :numCols]  # meshgrid of pixel coord
+        TL_row, TL_col = bT + corner_radius, bL + corner_radius
+        BL_row, BL_col = numRows - bB - corner_radius, bL + corner_radius
+        BR_row, BR_col = numRows - bB - corner_radius, numCols - bR - corner_radius
+        TR_row, TR_col = bT + corner_radius, numCols - bR - corner_radius
+        in_TL = (
+            (rows >= bT)
+            & (rows < bT + corner_radius)
+            & (cols >= bL)
+            & (cols < bL + corner_radius)
+        )
+        in_BL = (
+            (rows >= numRows - bB - corner_radius)
+            & (rows < numRows - bB)
+            & (cols >= bL)
+            & (cols < bL + corner_radius)
+        )
+        in_BR = (
+            (rows >= numRows - bB - corner_radius)
+            & (rows < numRows - bB)
+            & (cols >= numCols - bR - corner_radius)
+            & (cols < numCols - bR)
+        )
+        in_TR = (
+            (rows >= bT)
+            & (rows < bT + corner_radius)
+            & (cols >= numCols - bR - corner_radius)
+            & (cols < numCols - bR)
+        )
+        TL_r = np.sqrt((rows - TL_row) ** 2 + (cols - TL_col) ** 2)
+        BL_r = np.sqrt((rows - BL_row) ** 2 + (cols - BL_col) ** 2)
+        BR_r = np.sqrt((rows - BR_row) ** 2 + (cols - BR_col) ** 2)
+        TR_r = np.sqrt((rows - TR_row) ** 2 + (cols - TR_col) ** 2)
+        inRectangle = (
+            (rows >= bT) & (rows < numRows - bB) & (cols >= bL) & (cols < numCols - bR)
+        )
+        inCorners = (
+            (in_TL & (TL_r > corner_radius))
+            | (in_BL & (BL_r > corner_radius))
+            | (in_BR & (BR_r > corner_radius))
+            | (in_TR & (TR_r > corner_radius))
+        )
+        self.in_usable_region = inRectangle & ~inCorners
+
+    def add_usable_region_to_ax(self, ax, color="dodgerblue", linestyle="dashed"):
+        ifr = self.in_usable_region
+        boundary = np.zeros_like(ifr, dtype=np.uint8)
+        boundary[ifr] = 1
+        ax.contour(boundary, levels=[0.5], colors=color, linestyles=linestyle)
+        return ax
 
     def estimate_background(
         self,
@@ -190,64 +281,11 @@ class StarField(object):
         nCorr = (
             self.n_ij - self.b_ij + np.median(self.b_ij)
         )  #  correct for flatness
-        self.mu_0, self.sigma_0 = gaussian_background_fit(nCorr[self.in_usuable_region])
+        self.mu_0, self.sigma_0 = gaussian_background_fit(nCorr[self.in_usable_region])
         G = 2.39  # for SBIG ST-8XME camera
         self.pixel_variance = (
             np.maximum(self.n_ij - self.b_ij, 0) / G + self.sigma_0**2
         )
-
-    def set_usable_region(self, border=[50, 50, 50, 50], corner_radius=300):
-        """Define a region in which to accept stars using a boolean array
-
-        This will create a 2D boolean array which omits a border and rounded corners
-
-        """
-
-        bL, bR, bT, bB = border  # border on Left, Right, Top and Bottom
-        numRows, numCols = self.n_ij.shape
-        rows, cols = np.ogrid[:numRows, :numCols]  # meshgrid of pixel coord
-        TL_row, TL_col = bT + corner_radius, bL + corner_radius
-        BL_row, BL_col = numRows - bB - corner_radius, bL + corner_radius
-        BR_row, BR_col = numRows - bB - corner_radius, numCols - bR - corner_radius
-        TR_row, TR_col = bT + corner_radius, numCols - bR - corner_radius
-        in_TL = (
-            (rows >= bT)
-            & (rows < bT + corner_radius)
-            & (cols >= bL)
-            & (cols < bL + corner_radius)
-        )
-        in_BL = (
-            (rows >= numRows - bB - corner_radius)
-            & (rows < numRows - bB)
-            & (cols >= bL)
-            & (cols < bL + corner_radius)
-        )
-        in_BR = (
-            (rows >= numRows - bB - corner_radius)
-            & (rows < numRows - bB)
-            & (cols >= numCols - bR - corner_radius)
-            & (cols < numCols - bR)
-        )
-        in_TR = (
-            (rows >= bT)
-            & (rows < bT + corner_radius)
-            & (cols >= numCols - bR - corner_radius)
-            & (cols < numCols - bR)
-        )
-        TL_r = np.sqrt((rows - TL_row) ** 2 + (cols - TL_col) ** 2)
-        BL_r = np.sqrt((rows - BL_row) ** 2 + (cols - BL_col) ** 2)
-        BR_r = np.sqrt((rows - BR_row) ** 2 + (cols - BR_col) ** 2)
-        TR_r = np.sqrt((rows - TR_row) ** 2 + (cols - TR_col) ** 2)
-        inRectangle = (
-            (rows >= bT) & (rows < numRows - bB) & (cols >= bL) & (cols < numCols - bR)
-        )
-        inCorners = (
-            (in_TL & (TL_r > corner_radius))
-            | (in_BL & (BL_r > corner_radius))
-            | (in_BR & (BR_r > corner_radius))
-            | (in_TR & (TR_r > corner_radius))
-        )
-        self.in_usuable_region = inRectangle & ~inCorners
 
     def find_clusters(self, threshold_factor=2.5):
         """ Cluster the image to identify isolated stars
@@ -321,7 +359,7 @@ class StarField(object):
                 and abs(rho_xy) <= rho_cl_max
             )
             mux, muy = cluster.mu()
-            xy_ok = self.in_usuable_region[int(muy), int(mux)]
+            xy_ok = self.in_usable_region[int(muy), int(mux)]
             accept_cluster = cluster.number_of_pixels() >= minimum_pixels and covariance_ok and xy_ok
             if accept_cluster:
                 star_number += 1
@@ -362,61 +400,6 @@ class StarField(object):
                 "{:8.3f}".format(sigma_y),
                 "{:8.3f}".format(rho_xy),
             )
-
-    def plot_starfield(self, data, norm=None, vmin_frac=0.99, vmax_frac=1.01, cmap="Greys", use_wcs=True, figsize=(8, 4)):
-
-        # Set up the kwargs
-        ims_kw = dict(cmap=cmap, origin="upper")
-        subplot_kw = {}
-        subplot_set_kw = {}
-
-        if use_wcs:
-            wcs = WCS(self.header)
-            subplot_kw.update(dict(projection=wcs))
-            ims_kw.update(dict(origin=None))
-            subplot_set_kw.update(xlabel="RA", ylabel="DEC")
-        else:
-            subplot_set_kw.update(xlabel="Pixels", ylabel="Pixels")
-
-        fig, ax = plt.subplots(nrows=1, figsize=figsize, subplot_kw=subplot_kw)
-
-        vminVal = vmin_frac * np.median(data)
-        vmaxVal = vmax_frac * np.median(data)
-
-        if norm == "lognorm":
-            norm = matplotlib.colors.LogNorm(vmin=vminVal, vmax=vmaxVal)
-            ims_kw["norm"] = norm
-        else:
-            ims_kw.update(dict(vmin=vminVal, vmax=vmaxVal, norm=norm))
-
-        cbar = ax.imshow(data, **ims_kw)
-        fig.colorbar(cbar, label="Counts")
-
-        ifr = self.in_usuable_region
-        boundary = np.zeros_like(ifr, dtype=np.uint8)
-        boundary[ifr] = 255  # Set boundary pixels to white
-        ax.set(title=f"File: {self.fits_file}", **subplot_set_kw)
-        ax.contour(boundary, levels=[0.5], colors="dodgerblue", linestyles="dashed")
-
-        if use_wcs:
-            ax.coords.grid(color='white', alpha=0.5, linestyle='solid')
-            lon = ax.coords[0]
-            lat = ax.coords[1]
-
-            lon.set_major_formatter('hh:mm:ss')
-            lon.set_ticks(spacing=1. * units.arcmin)
-            lon.set_ticklabel(exclude_overlapping=True)
-            lon.set_axislabel("RA")
-
-            lat.set_major_formatter('dd:mm')
-            lat.set_ticks(spacing=1. * units.arcmin)
-            lat.set_ticklabel(exclude_overlapping=True)
-            lat.set_axislabel("DEC")
-
-        image_name = self.fits_file_basename.replace(".fit", ".png")
-        image_path = os.path.join(self.fits_file_dirname, image_name)
-
-        fig.savefig(image_path)
 
 
 def gaussian_background_fit(image_region):
